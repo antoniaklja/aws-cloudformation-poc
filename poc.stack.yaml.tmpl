@@ -1,0 +1,230 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: CloudFormation stack for PoC development
+
+Parameters:
+  EC2SSHKeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: poc_ssh_key
+    Description: A ssh key to be used for EC2 instances
+  InstanceAmiId:
+    Type: String
+    Default: ami-417abe38
+  ResourcePrefix:
+    Type: String
+    Default: test
+
+Mappings:
+  InstanceParams:
+    UserData:
+      cloudconfig: {{ user_data }}
+
+Resources:
+  ECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "poc-${ResourceSuffix}"
+
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "poc-${ResourceSuffix}"
+      AccessControl: Private
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+      - Key: Name
+        Value: !Sub "poc-${ResourceSuffix}"
+
+  S3Bucket:
+    Type: AWS::S3::BucketPolicy
+    DependsOn: S3Bucket
+    Properties:
+      Bucket: !Ref S3Bucket
+      PolicyDocument:
+        Version: "2008-10-17"
+        Statement:
+        - Effect: Allow
+          Principal:
+            AWS:
+            - !Sub "arn:aws:iam::${AWS::AccountId}:role/poc-role-${ResourceSuffix}"
+          Action:
+          - s3:GetObject
+          Resource:
+          - !Sub "arn:aws:s3:::poc-${ResourceSuffix}/*"
+
+  IAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "poc-role-${ResourceSuffix}"
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action:
+          - sts:AssumeRole
+          Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+        Version: '2012-10-17'
+      Path: "/"
+      Policies:
+      - PolicyName: root
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Action:
+            - ecr:GetAuthorizationToken
+            - ecr:BatchCheckLayerAvailability
+            - ecr:GetDownloadUrlForLayer
+            - ecr:GetRepositoryPolicy
+            - ecr:DescribeRepositories
+            - ecr:ListImages
+            - ecr:BatchGetImage
+            Resource:
+            - "*"
+            Effect: Allow
+          - Action:
+            - s3:*
+            Resource:
+            - !Sub "arn:aws:s3:::poc-${ResourceSuffix}/*"
+            Effect: Allow
+          Version: '2012-10-17'
+        PolicyName: root
+
+  IAMInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: "/"
+      Roles:
+      - Ref: IAMRole
+
+  AutoScale:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      LaunchConfigurationName:
+        Ref: LaunchConfiguration
+      DesiredCapacity: 1
+      MaxSize: 2
+      MinSize: 1
+      Cooldown: 60
+      HealthCheckGracePeriod: 300
+      HealthCheckType: EC2
+      AvailabilityZones:
+      - eu-west-1a
+      VPCZoneIdentifier:
+      - Ref: Subnet1a
+      Tags:
+      - Key: Name
+        PropagateAtLaunch: 'true'
+        Value: "poc"
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        MinInstancesInService: 1
+        MaxBatchSize: 1
+        PauseTime: PT0M
+
+  LaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      BlockDeviceMappings:
+      - DeviceName: "/dev/xvda"
+        Ebs:
+          VolumeSize: '10'
+      IamInstanceProfile: !Ref IAMInstanceProfile
+      ImageId:
+        Ref: InstanceAmiId
+      InstanceType: m4.large
+      EbsOptimized: true
+      KeyName: !Ref EC2SSHKeyName
+      SecurityGroups:
+      - Ref: SecurityGroup
+      UserData:
+        Fn::FindInMap:
+        - InstanceParams
+        - UserData
+        - cloudconfig
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription:
+        Ref: AWS::StackName
+      SecurityGroupEgress:
+      - CidrIp: 0.0.0.0/0
+        IpProtocol: icmp
+        FromPort: -1
+        ToPort: -1
+      - CidrIp: 0.0.0.0/0
+        IpProtocol: tcp
+        FromPort: 0
+        ToPort: 65535
+      - CidrIp: 0.0.0.0/0
+        IpProtocol: udp
+        FromPort: 0
+        ToPort: 65535
+      SecurityGroupIngress:
+      - CidrIp: 0.0.0.0/0
+        IpProtocol: tcp
+        FromPort: 7
+        ToPort: 7
+      VpcId:
+        Ref: VPC
+
+  Subnet1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: eu-west-1
+      CidrBlock: 10.0.0.0/16
+      MapPublicIpOnLaunch: true
+      VpcId:
+        Ref: VPC
+      Tags:
+      - Key: Name
+        Value: !Sub "poc-subnet1a-${ResourceSuffix}"
+
+  Subnet1aRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        Ref: RouteTable
+      SubnetId:
+        Ref: Subnet1a
+
+  RouteToInternet:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: InternetGateway
+      RouteTableId:
+        Ref: RouteTable
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId:
+        Ref: InternetGateway
+      VpcId:
+        Ref: VPC
+
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: VPC
+
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      InstanceTenancy: default
+      Tags:
+      - Key: Name
+        Value: !Sub "poc-vpc-${ResourceSuffix}"
+

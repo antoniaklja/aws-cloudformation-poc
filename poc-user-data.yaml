@@ -1,0 +1,41 @@
+#cloud-config
+coreos:
+  update:
+    reboot-strategy: off
+
+  units:
+    - name: app.service
+      command: "start"
+      content: |
+        [Unit]
+        Description=Start
+        Wants=docker.service ecr-login.service
+
+        [Service]
+        Restart=always
+        RestartSec=5
+        TimeoutSec=60
+        ExecStartPre=-/usr/bin/docker rm -f app
+        ExecStart=/usr/bin/docker run --rm --name app aws-account.dkr.ecr.eu-west-1a.amazonaws.com/poc:latest
+        ExecStop=/usr/bin/docker rm -f app
+
+    - name: ecr-login.service
+      enable: true
+      content: |
+        [Unit]
+        Description=login to ECR with Docker
+        Wants=docker.service network-online.target
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=yes
+        TimeoutSec=60
+        ExecStart=/opt/bin/ecr-login
+
+write_files:
+  - path: /opt/bin/ecr-login
+    owner: root:root
+    permissions: 0700
+    content: |
+      #!/bin/bash -e
+      docker run --net host --rm quay.io/coreos/awscli:master aws --region eu-west-1 ecr get-login | bash
