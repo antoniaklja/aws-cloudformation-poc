@@ -57,7 +57,7 @@ uncomment systemd service:
         RestartSec=5
         TimeoutSec=60
         ExecStartPre=-/usr/bin/docker rm -f app
-        ExecStart=/usr/bin/docker run --rm --name app 003048186787.dkr.ecr.eu-west-1a.amazonaws.com/poc:latest
+        ExecStart=/usr/bin/docker run --rm --name app aws-account-id.dkr.ecr.eu-west-1a.amazonaws.com/poc:latest
         ExecStop=/usr/bin/docker rm -f app
 
 For more information take a look at [Getting started with systemd](https://coreos.com/os/docs/latest/getting-started-with-systemd.html).
