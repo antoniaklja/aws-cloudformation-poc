@@ -1,6 +1,6 @@
 # PoC environment
 
-Simple Proof of Concept CloudFormation stack with [CoreOS](https://coreos.com) as operating system.
+Simple CloudFormation stack which creates development environment which is automatically provisioned using [CloudConfig](https://coreos.com/os/docs/latest/cloud-config.html) and installs [CoreOS](https://coreos.com) as operating system.
 
 Components:
 - VPC + public Subnet connected to InternetGateway
