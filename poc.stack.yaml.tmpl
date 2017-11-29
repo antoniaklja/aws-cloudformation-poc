@@ -10,9 +10,15 @@ Parameters:
   InstanceAmiId:
     Type: String
     Default: ami-417abe38
+  InstanceType:
+    Type: String
+    Default: t2.micro
   ResourcePrefix:
     Type: String
     Default: test
+  VPCCidrBlock:
+    Type: String
+    Default: 10.0.0.0/16
 
 Mappings:
   InstanceParams:
@@ -107,7 +113,7 @@ Resources:
       MaxSize: 2
       MinSize: 1
       Cooldown: 60
-      HealthCheckGracePeriod: 300
+      HealthCheckGracePeriod: 100
       HealthCheckType: EC2
       AvailabilityZones:
       - eu-west-1a
@@ -116,7 +122,7 @@ Resources:
       Tags:
       - Key: Name
         PropagateAtLaunch: 'true'
-        Value: "poc"
+        Value: !Sub "poc-${ResourceSuffix}"
     UpdatePolicy:
       AutoScalingRollingUpdate:
         MinInstancesInService: 1
@@ -133,7 +139,7 @@ Resources:
       IamInstanceProfile: !Ref IAMInstanceProfile
       ImageId:
         Ref: InstanceAmiId
-      InstanceType: m4.large
+      InstanceType: !Ref InstanceType
       EbsOptimized: true
       KeyName: !Ref EC2SSHKeyName
       SecurityGroups:
@@ -163,10 +169,10 @@ Resources:
         FromPort: 0
         ToPort: 65535
       SecurityGroupIngress:
-      - CidrIp: 0.0.0.0/0
-        IpProtocol: tcp
-        FromPort: 7
-        ToPort: 7
+#      - CidrIp: X.X.X.X/X # your subnet
+#        IpProtocol: tcp
+#        FromPort: 22
+#        ToPort: 22
       VpcId:
         Ref: VPC
 
@@ -174,7 +180,7 @@ Resources:
     Type: AWS::EC2::Subnet
     Properties:
       AvailabilityZone: eu-west-1
-      CidrBlock: 10.0.0.0/16
+      CidrBlock: !VPCCidrBlock
       MapPublicIpOnLaunch: true
       VpcId:
         Ref: VPC
@@ -220,7 +226,7 @@ Resources:
   VPC:
     Type: AWS::EC2::VPC
     Properties:
-      CidrBlock: 10.0.0.0/16
+      CidrBlock: !Ref VPCCidrBlock
       EnableDnsHostnames: true
       EnableDnsSupport: true
       InstanceTenancy: default
