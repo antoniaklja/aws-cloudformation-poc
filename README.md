@@ -1,4 +1,4 @@
-# PoC environment
+# AWS development environment
 
 Simple CloudFormation stack which creates development environment which is automatically provisioned using [CloudConfig](https://coreos.com/os/docs/latest/cloud-config.html) and installs [CoreOS](https://coreos.com) as operating system.
 
